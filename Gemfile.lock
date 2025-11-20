@@ -3,13 +3,16 @@ GEM
   specs:
     ruby-progressbar (1.13.0)
     session (3.2.0)
+    vernier (1.8.1)
 
 PLATFORMS
+  arm64-darwin-23
   x86_64-linux
 
 DEPENDENCIES
   ruby-progressbar
   session
+  vernier (~> 1.0)
 
 BUNDLED WITH
    2.6.2

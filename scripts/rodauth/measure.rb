@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'vernier'
+
 # All logic specific to the application being tested goes here.
 # The 'Measure' module is included in the main script,
 # so all instance variables of the main script may be used.
@@ -39,17 +41,19 @@ module Measure
 
   # Shell command to switch to the application folder
   def cmd_switch_to_application_folder
-    "cd apps/#{@app_name} > /dev/null;"
+    "cd apps/#{@app_name};"
   end
 
   # Shell command to bundle gems
   def cmd_application_bundle_install
-    'bundle install > /dev/null;'
+    'bundle install;'
   end
 
   # Shell command to start the server process in the background, so end with &
   def cmd_measurement_run_server(jit)
-    "bundle exec ruby #{jit} $(which rackup) --quiet > /dev/null 2>&1 &"
+    # Use bundle exec to ensure we find rackup from the bundle
+    # Pass JIT flags directly to ruby interpreter
+    "bundle exec ruby #{jit} -S rackup &"
   end
 
   # Setup tests: set counters and determine uri's
@@ -119,16 +123,24 @@ module Measure
 
     bar = ProgressBar.create(title: 'Testing', format: '%t %a %j% |%B| %c/%C', total: @n)
 
-    Net::HTTP.start(MEASURE_HOST, MEASURE_PORT, { read_timeout: NET_TIMEOUTS[0], open_timeout: NET_TIMEOUTS[1] }) do |http|
+    Vernier.profile(out: "data/#{@app_name}/profile_#{version.full_name.gsub(/[^a-zA-Z0-9]/, '_')}_#{Time.now.to_i}.json") do
+      _run_benchmark_loop(http: nil, bar: bar, pid: pid)
+    end
+
+    bar.finish
+  end
+
+  private
+
+  def _run_benchmark_loop(http: nil, bar:, pid:)
+    Net::HTTP.start(MEASURE_HOST, MEASURE_PORT, { read_timeout: NET_TIMEOUTS[0], open_timeout: NET_TIMEOUTS[1] }) do |http_conn|
       @n.times do |x|
         pid ||= measurement_server_pid
-        _measure_run_uris(x, http)
+        _measure_run_uris(x, http_conn)
         _measure_memory(pid, x)
         bar.increment unless bar.finished?
       end
     end
-
-    bar.finish
   end
 
   # Private method to test if the server is alive and

@@ -7,6 +7,7 @@ require 'yaml'
 require 'ruby-progressbar'
 require_relative 'ruby_measure_responsetime/rvm'
 require_relative 'ruby_measure_responsetime/rbenv'
+require_relative 'ruby_measure_responsetime/chruby'
 require_relative 'ruby_measure_responsetime/ruby_stats'
 require_relative 'ruby_measure_responsetime/analyze'
 
@@ -74,10 +75,10 @@ class RubyMeasureResponsetime
   end
 
   def determine_ruby_manager
-    @ruby_manager = Rvm.ruby_manager || Rbenv.ruby_manager
+    @ruby_manager = Rvm.ruby_manager || Rbenv.ruby_manager || Chruby.ruby_manager
 
     unless @ruby_manager
-      raise 'Please install RVM, Rbenv or change the script to use another Ruby version manager'
+      raise 'Please install RVM, Rbenv, chruby or change the script to use another Ruby version manager'
     end
   end
 
@@ -102,8 +103,6 @@ class RubyMeasureResponsetime
   end
 
   def render_screen
-    system 'clear'
-
     if @n > 0
       puts "Testing '#{@app_name}' with these rubies (N = #{@n} run = #{@run_id})\n\n"
     else
@@ -157,8 +156,8 @@ class RubyMeasureResponsetime
     puts "Starting server"
     bash_execute(bash, cmd_measurement_run_server(version.jit))
 
-    # Give server some time to start. Increase this time if needed for your test setup
-    sleep 2
+    # Wait for server to be ready - check if port is responding
+    wait_for_server_ready
   end
 
   def run_test_script(version)
@@ -230,6 +229,22 @@ class RubyMeasureResponsetime
     ].join(',') + CSV_LINE_TERMINATOR)
 
     f.close
+  end
+
+  def wait_for_server_ready
+    # Try to connect for up to 30 seconds
+    30.times do |i|
+      begin
+        Net::HTTP.start('127.0.0.1', 9292, open_timeout: 1, read_timeout: 1) do |http|
+          # Just try to connect, don't need to actually request anything
+          return true
+        end
+      rescue Errno::ECONNREFUSED, Errno::ETIMEDOUT, Net::OpenTimeout
+        print "." if i > 0  # Show progress after first attempt
+        sleep 1
+      end
+    end
+    raise "Server failed to start after 30 seconds"
   end
 
   def stop_server(bash)
